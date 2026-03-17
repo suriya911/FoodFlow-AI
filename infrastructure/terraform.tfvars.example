@@ -1,0 +1,5 @@
+aws_region            = "us-east-1"
+project               = "foodflow"
+backend_desired_count = 1
+nemotron_api_key      = "nvapi-xxxxxxxxxxxxxxxxxxxx"
+openrouter_api_key    = "sk-or-xxxxxxxxxxxxxxxxxxxx"

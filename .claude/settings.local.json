@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find D:/FoodFlow-AI -not -path *.git* -print)"
+    ]
+  }
+}

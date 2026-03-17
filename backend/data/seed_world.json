@@ -1,0 +1,39 @@
+{
+  "restaurants": [
+    {"id": "rest_1", "name": "Golden Gate Bistro",   "lat": 37.7749, "lng": -122.4194, "type": "restaurant"},
+    {"id": "rest_2", "name": "Mission Taqueria",      "lat": 37.7599, "lng": -122.4148, "type": "restaurant"},
+    {"id": "rest_3", "name": "SOMA Kitchen",           "lat": 37.7785, "lng": -122.3974, "type": "restaurant"},
+    {"id": "rest_4", "name": "Richmond Noodle House",  "lat": 37.7836, "lng": -122.4641, "type": "restaurant"},
+    {"id": "rest_5", "name": "Sunset Bakery",          "lat": 37.7631, "lng": -122.4786, "type": "restaurant"}
+  ],
+  "events": [
+    {"id": "event_1", "name": "Moscone Center Expo", "lat": 37.7842, "lng": -122.4013, "type": "event"},
+    {"id": "event_2", "name": "Oracle Park Gala",    "lat": 37.7786, "lng": -122.3893, "type": "event"}
+  ],
+  "volunteers": [
+    {"id": "vol_1", "name": "Maria Santos",  "lat": 37.7751, "lng": -122.4193, "available": true, "capacity": 50, "vehicle": "Van",    "streams": ["food", "transport"]},
+    {"id": "vol_2", "name": "James Chen",    "lat": 37.7680, "lng": -122.4401, "available": true, "capacity": 80, "vehicle": "Truck",  "streams": ["food", "transport"]},
+    {"id": "vol_3", "name": "Aisha Johnson", "lat": 37.7900, "lng": -122.4050, "available": true, "capacity": 60, "vehicle": "SUV",    "streams": ["food", "transport"]}
+  ],
+  "centers": [
+    {"id": "center_1", "name": "SF Food Bank",               "lat": 37.7470, "lng": -122.4065, "demand_score": 0.90, "capacity_remaining": 200},
+    {"id": "center_2", "name": "Glide Memorial",             "lat": 37.7830, "lng": -122.4126, "demand_score": 0.85, "capacity_remaining": 150},
+    {"id": "center_3", "name": "St. Anthony Foundation",     "lat": 37.7815, "lng": -122.4147, "demand_score": 0.80, "capacity_remaining": 180},
+    {"id": "center_4", "name": "Tenderloin Relief Center",   "lat": 37.7830, "lng": -122.4189, "demand_score": 0.95, "capacity_remaining": 120},
+    {"id": "center_5", "name": "Mission Neighborhood Center","lat": 37.7585, "lng": -122.4183, "demand_score": 0.75, "capacity_remaining": 160},
+    {"id": "center_6", "name": "Richmond Food Pantry",       "lat": 37.7820, "lng": -122.4640, "demand_score": 0.70, "capacity_remaining": 100},
+    {"id": "center_7", "name": "Sunset Community Hub",       "lat": 37.7610, "lng": -122.4750, "demand_score": 0.65, "capacity_remaining": 130}
+  ],
+  "ride_origins": [
+    {"id": "origin_1", "name": "Market St & 5th (Street)",    "lat": 37.7804, "lng": -122.4100, "type": "ride_origin"},
+    {"id": "origin_2", "name": "Civic Center BART",           "lat": 37.7791, "lng": -122.4145, "type": "ride_origin"},
+    {"id": "origin_3", "name": "UN Plaza Drop-In",            "lat": 37.7794, "lng": -122.4156, "type": "ride_origin"},
+    {"id": "origin_4", "name": "SoMa Overnight Shelter",      "lat": 37.7751, "lng": -122.4030, "type": "ride_origin"},
+    {"id": "origin_5", "name": "Tenderloin Walk-In Center",   "lat": 37.7845, "lng": -122.4160, "type": "ride_origin"}
+  ],
+  "ride_destinations": [
+    {"id": "dest_1", "name": "Zuckerberg SF General Hospital","lat": 37.7552, "lng": -122.4058, "type": "hospital"},
+    {"id": "dest_2", "name": "St. Mary's Medical Center",     "lat": 37.7778, "lng": -122.4427, "type": "hospital"},
+    {"id": "dest_3", "name": "Navigation Center (Main)",      "lat": 37.7652, "lng": -122.4107, "type": "shelter"}
+  ]
+}

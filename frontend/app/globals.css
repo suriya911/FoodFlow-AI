@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Leaflet z-index reset so map stays below UI overlays ── */
+.leaflet-pane        { z-index: 1 !important; }
+.leaflet-top,
+.leaflet-bottom      { z-index: 2 !important; }
+.leaflet-control     { z-index: 2 !important; }
+
+/* ── Custom scrollbar for dark theme panels ── */
+.panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #374151 transparent;
+}
+.panel-scroll::-webkit-scrollbar { width: 4px; }
+.panel-scroll::-webkit-scrollbar-track { background: transparent; }
+.panel-scroll::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+
+/* ── Map container fills its parent ── */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #111827;
+}
