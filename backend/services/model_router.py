@@ -122,7 +122,20 @@ class ModelRouter:
 
             t0 = time.time()
             try:
-                client = AsyncOpenAI(api_key=api_key, base_url=tier["base_url"])
+                # OpenRouter requires these headers to identify the app
+                extra_headers: Dict[str, str] = {}
+                if tier.get("base_url") and "openrouter.ai" in tier["base_url"]:
+                    extra_headers = {
+                        "HTTP-Referer": os.getenv("APP_URL", "https://foodflow-ai.vercel.app"),
+                        "X-Title": "FoodFlow AI",
+                    }
+
+                logger.info("▶ Calling %s via %s …", tier["model_id"], tier["base_url"])
+                client = AsyncOpenAI(
+                    api_key=api_key,
+                    base_url=tier["base_url"],
+                    default_headers=extra_headers,
+                )
                 resp = await client.chat.completions.create(
                     model=tier["model_id"],
                     messages=[
@@ -146,7 +159,7 @@ class ModelRouter:
                 if idx != self._current:
                     self._do_switch(idx, f"Recovered to {tier['name']}")
 
-                logger.info("Model call OK: %s (%.0f ms)", tier["name"], latency)
+                logger.info("✅ Model call OK: %s (%.0f ms)", tier["name"], latency)
                 return result, tier["name"]
 
             except Exception as exc:
@@ -154,7 +167,8 @@ class ModelRouter:
                 stat.errors += 1
                 stat.total_latency_ms += latency
                 stat.status = "error"
-                logger.warning("Tier %s failed: %s — falling back", tier["name"], exc)
+                logger.warning("❌ Tier %s failed (%.0f ms): %s — falling back",
+                               tier["name"], latency, exc)
 
         return None, TIERS[-1]["name"]  # all tiers exhausted → mock
 

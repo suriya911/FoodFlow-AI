@@ -6,21 +6,27 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  # Uncomment to use remote state (recommended for production)
-  # backend "s3" {
-  #   bucket = "foodflow-tf-state"
-  #   key    = "prod/terraform.tfstate"
-  #   region = var.aws_region
-  # }
 }
 
 provider "aws" {
   region = var.aws_region
 }
 
-# ── Networking ──────────────────────────────────────────────────────────────
+# ── Data: latest Amazon Linux 2023 AMI ────────────────────────────────────────
+data "aws_ami" "al2023" {
+  most_recent = true
+  owners      = ["amazon"]
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+  filter {
+    name   = "state"
+    values = ["available"]
+  }
+}
 
+# ── Networking ─────────────────────────────────────────────────────────────────
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
@@ -33,20 +39,12 @@ resource "aws_internet_gateway" "igw" {
   tags   = { Name = "${var.project}-igw" }
 }
 
-resource "aws_subnet" "public_a" {
+resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "${var.aws_region}a"
   map_public_ip_on_launch = true
-  tags                    = { Name = "${var.project}-public-a" }
-}
-
-resource "aws_subnet" "public_b" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.2.0/24"
-  availability_zone       = "${var.aws_region}b"
-  map_public_ip_on_launch = true
-  tags                    = { Name = "${var.project}-public-b" }
+  tags                    = { Name = "${var.project}-public" }
 }
 
 resource "aws_route_table" "public" {
@@ -55,220 +53,129 @@ resource "aws_route_table" "public" {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
   }
-  tags = { Name = "${var.project}-rt-public" }
+  tags = { Name = "${var.project}-rt" }
 }
 
-resource "aws_route_table_association" "a" {
-  subnet_id      = aws_subnet.public_a.id
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
-resource "aws_route_table_association" "b" {
-  subnet_id      = aws_subnet.public_b.id
-  route_table_id = aws_route_table.public.id
-}
+# ── Security Group ─────────────────────────────────────────────────────────────
+resource "aws_security_group" "backend" {
+  name        = "${var.project}-sg"
+  description = "FoodFlow backend: HTTP + WebSocket + SSH"
+  vpc_id      = aws_vpc.main.id
 
-# ── Security Groups ──────────────────────────────────────────────────────────
-
-resource "aws_security_group" "alb" {
-  name   = "${var.project}-alb-sg"
-  vpc_id = aws_vpc.main.id
-
+  # HTTP / WebSocket (nginx → 8000)
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  # Direct API access (useful for health checks & debugging)
   ingress {
-    from_port   = 443
-    to_port     = 443
+    from_port   = 8000
+    to_port     = 8000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = { Name = "${var.project}-alb-sg" }
-}
 
-resource "aws_security_group" "backend" {
-  name   = "${var.project}-backend-sg"
-  vpc_id = aws_vpc.main.id
-
+  # SSH — restrict to your IP in production
   ingress {
-    from_port       = 8000
-    to_port         = 8000
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb.id]
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags = { Name = "${var.project}-backend-sg" }
+
+  tags = { Name = "${var.project}-sg" }
 }
 
-# ── ECR ─────────────────────────────────────────────────────────────────────
+# ── IAM role — lets EC2 pull from ECR ────────────────────────────────────────
+resource "aws_iam_role" "ec2_ecr" {
+  name = "${var.project}-ec2-ecr-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}
 
+resource "aws_iam_role_policy_attachment" "ecr_read" {
+  role       = aws_iam_role.ec2_ecr.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_instance_profile" "ec2_ecr" {
+  name = "${var.project}-ec2-profile"
+  role = aws_iam_role.ec2_ecr.name
+}
+
+# ── ECR repository ────────────────────────────────────────────────────────────
 resource "aws_ecr_repository" "backend" {
   name                 = "${var.project}-backend"
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration { scan_on_push = true }
+
+  # Auto-delete untagged images to stay within 500 MB free tier
+  lifecycle_policy_text = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep only last 3 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 3
+      }
+      action = { type = "expire" }
+    }]
+  })
+
+  tags = { Name = "${var.project}-ecr" }
+}
+
+# ── EC2 t2.micro (AWS Free Tier: 750 hrs/month for 12 months) ─────────────────
+resource "aws_instance" "backend" {
+  ami                    = data.aws_ami.al2023.id
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.backend.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ecr.name
+  key_name               = var.key_pair_name
+
+  user_data = base64encode(templatefile("${path.module}/userdata.sh", {
+    ecr_url            = aws_ecr_repository.backend.repository_url
+    aws_region         = var.aws_region
+    openrouter_api_key = var.openrouter_api_key
+    nemotron_api_key   = var.nemotron_api_key
+    app_url            = var.app_url
+  }))
+
+  root_block_device {
+    volume_type           = "gp3"
+    volume_size           = 20  # GB — within free tier
+    delete_on_termination = true
+  }
+
   tags = { Name = "${var.project}-backend" }
 }
 
-# ── ECS Cluster ─────────────────────────────────────────────────────────────
-
-resource "aws_ecs_cluster" "main" {
-  name = "${var.project}-cluster"
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-  tags = { Name = "${var.project}-cluster" }
-}
-
-resource "aws_ecs_cluster_capacity_providers" "main" {
-  cluster_name       = aws_ecs_cluster.main.name
-  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
-  default_capacity_provider_strategy {
-    capacity_provider = "FARGATE"
-    weight            = 1
-  }
-}
-
-# ── IAM ─────────────────────────────────────────────────────────────────────
-
-data "aws_iam_policy_document" "ecs_assume" {
-  statement {
-    effect  = "Allow"
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "task_exec" {
-  name               = "${var.project}-task-exec"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "task_exec" {
-  role       = aws_iam_role.task_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# ── CloudWatch Log Group ─────────────────────────────────────────────────────
-
-resource "aws_cloudwatch_log_group" "backend" {
-  name              = "/ecs/${var.project}-backend"
-  retention_in_days = 7
-}
-
-# ── ECS Task Definition ──────────────────────────────────────────────────────
-
-resource "aws_ecs_task_definition" "backend" {
-  family                   = "${var.project}-backend"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.task_exec.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "backend"
-      image     = "${aws_ecr_repository.backend.repository_url}:latest"
-      essential = true
-      portMappings = [
-        { containerPort = 8000, protocol = "tcp" }
-      ]
-      environment = [
-        { name = "NEMOTRON_API_KEY",   value = var.nemotron_api_key },
-        { name = "OPENROUTER_API_KEY", value = var.openrouter_api_key }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.backend.name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "backend"
-        }
-      }
-    }
-  ])
-}
-
-# ── ALB ─────────────────────────────────────────────────────────────────────
-
-resource "aws_lb" "main" {
-  name               = "${var.project}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
-  tags               = { Name = "${var.project}-alb" }
-}
-
-resource "aws_lb_target_group" "backend" {
-  name        = "${var.project}-backend-tg"
-  port        = 8000
-  protocol    = "HTTP"
-  vpc_id      = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    path                = "/health"
-    interval            = 30
-    timeout             = 10
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-  }
-}
-
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.main.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.backend.arn
-  }
-}
-
-# ── ECS Service ─────────────────────────────────────────────────────────────
-
-resource "aws_ecs_service" "backend" {
-  name            = "${var.project}-backend"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.backend.arn
-  desired_count   = var.backend_desired_count
-  launch_type     = "FARGATE"
-
-  network_configuration {
-    subnets          = [aws_subnet.public_a.id, aws_subnet.public_b.id]
-    security_groups  = [aws_security_group.backend.id]
-    assign_public_ip = true
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.backend.arn
-    container_name   = "backend"
-    container_port   = 8000
-  }
-
-  depends_on = [aws_lb_listener.http]
-
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
+# ── Elastic IP (free when attached to running instance) ───────────────────────
+resource "aws_eip" "backend" {
+  instance = aws_instance.backend.id
+  domain   = "vpc"
+  tags     = { Name = "${var.project}-eip" }
 }

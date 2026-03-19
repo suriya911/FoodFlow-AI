@@ -1,5 +1,8 @@
-aws_region            = "us-east-1"
-project               = "foodflow"
-backend_desired_count = 1
-nemotron_api_key      = "nvapi-xxxxxxxxxxxxxxxxxxxx"
-openrouter_api_key    = "sk-or-xxxxxxxxxxxxxxxxxxxx"
+# Copy to terraform.tfvars — this file is safe to commit, terraform.tfvars is gitignored
+
+aws_region         = "us-east-1"
+project            = "foodflow"
+key_pair_name      = "foodflow-key"          # create in AWS Console → EC2 → Key Pairs
+openrouter_api_key = "sk-or-v1-..."          # openrouter.ai → Keys
+nemotron_api_key   = ""                      # build.nvidia.com → optional Tier 0
+app_url            = "https://foodflow-ai.vercel.app"

@@ -202,13 +202,15 @@ async def _emit_transport_signal() -> Dict:
 # ── Planning & dispatch ───────────────────────────────────────────────────────
 
 async def plan_and_dispatch(signal: Dict, stream: str) -> None:
-    from services.langgraph_agent import run_agent
     t_start = datetime.now(timezone.utc)
 
     try:
+        from services.langgraph_agent import run_agent  # late import avoids circular dep
         result = await run_agent(signal, stream)
     except Exception as exc:
-        logger.error("LangGraph run_agent failed for %s: %s", signal["id"], exc)
+        import traceback
+        logger.error("LangGraph run_agent failed for %s: %s\n%s",
+                     signal["id"], exc, traceback.format_exc())
         return
 
     trace_entries = result.get("agent_trace", [])
